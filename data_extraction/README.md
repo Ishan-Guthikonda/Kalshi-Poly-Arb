@@ -1,1 +1,1 @@
-cointains all the code and files associated with the initial scraping of data from Kalshi and Polymarket
+cointains all the code associated with the initial scraping of data from Kalshi and Polymarket. The csv files provide example outputs for the code. 
