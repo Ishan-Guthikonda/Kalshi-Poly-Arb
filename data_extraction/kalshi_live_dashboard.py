@@ -2,10 +2,9 @@ import requests
 import csv
 import time
 
-# === Config ===
+# Config
 base_url = "https://api.elections.kalshi.com/trade-api/v2/markets"
 limit = 1000
-url = f"{base_url}?limit={limit}"
 output_path = "kalshi_markets.csv"
 
 fieldnames = [
@@ -15,85 +14,78 @@ fieldnames = [
     "Status", "Expires"
 ]
 
-seen_cursors = set()
-seen_first_titles = set()
-MAX_PAGES = 200  # Safety limit
+start_time = time.time()
+cursor = None
 total_rows = 0
 page_num = 0
-start_time = time.time()
+MAX_PAGES = 200
 
+session = requests.Session()
+rows = []
+
+while True:
+    url = f"{base_url}?limit={limit}&status=open"
+    if cursor:
+        url += f"&cursor={cursor}"
+
+    try:
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"Request failed: {e}")
+        break
+
+    markets = data.get("markets", [])
+    if not markets:
+        print("No markets found on this page. Stopping.")
+        break
+
+    for m in markets:
+        title = m.get("title", "")
+        subtitle = m.get("subtitle", "")
+        yes_sub = m.get("yes_sub_title", "")
+        yes_label = m.get("yes_label", "")
+
+        # Construct full title with optional subtitle and yes_sub_title
+        if subtitle and yes_sub:
+            full_title = f"{title} ({subtitle}) [{yes_sub}]"
+        elif subtitle:
+            full_title = f"{title} ({subtitle})"
+        elif yes_sub:
+            full_title = f"{title} [{yes_sub}]"
+        else:
+            full_title = title
+
+        rows.append({
+            "ID": m.get("ticker", ""),
+            "Title": full_title,
+            "Yes Event Title": yes_label,
+            "Option 1": "Yes",
+            "Option 2": "No",
+            "Option 1 Ask (¢)": round(m.get("yes_ask") or 0, 2),
+            "Option 2 Ask (¢)": round(m.get("no_ask") or 0, 2),
+            "Status": m.get("status", ""),
+            "Expires": m.get("expected_expiration_time", "")
+        })
+        total_rows += 1
+
+    page_num += 1
+    cursor = data.get("cursor")
+    if not cursor:
+        print("No more pages.")
+        break
+    if page_num >= MAX_PAGES:
+        print("Max page limit reached.")
+        break
+
+# Write everything to CSV once
 with open(output_path, mode="w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
-
-    while url:
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-        except KeyboardInterrupt:
-            print("❌ Interrupted by user.")
-            break
-        except Exception as e:
-            print(f"❌ Request failed: {e}")
-            break
-
-        markets = data.get("markets", [])
-        count_this_page = len(markets)
-        page_num += 1
-
-        if count_this_page == 0:
-            print("⚠️ Empty page. Exiting.")
-            break
-
-        first_title = markets[0].get("title", "None")
-        if first_title in seen_first_titles:
-            break
-        seen_first_titles.add(first_title)
-
-        saved_this_page = 0
-        for m in markets:
-            if m.get("status") == "active":
-                title = m.get("title", "")
-                subtitle = m.get("subtitle", "")
-                yes_sub = m.get("yes_sub_title", "")
-
-                if subtitle and yes_sub:
-                    full_title = f"{title} ({subtitle}) [{yes_sub}]"
-                elif subtitle:
-                    full_title = f"{title} ({subtitle})"
-                elif yes_sub:
-                    full_title = f"{title} [{yes_sub}]"
-                else:
-                    full_title = title
-
-                writer.writerow({
-                    "ID": m.get("ticker", ""),
-                    "Title": full_title,
-                    "Yes Event Title": m.get("yes_label", ""),
-                    "Option 1": "Yes",
-                    "Option 2": "No",
-                    "Option 1 Ask (¢)": round(m.get("yes_ask") or 0, 2),
-                    "Option 2 Ask (¢)": round(m.get("no_ask") or 0, 2),
-                    "Status": m.get("status", ""),
-                    "Expires": m.get("expected_expiration_time", "")
-                })
-                total_rows += 1
-                saved_this_page += 1
-
-        cursor = data.get("cursor")
-        if not cursor or cursor in seen_cursors:
-            print("Done. No more pages.")
-            break
-
-        if page_num >= MAX_PAGES:
-            print("Max page limit reached. Stopping.")
-            break
-
-        seen_cursors.add(cursor)
-        url = f"{base_url}?limit={limit}&cursor={cursor}"
+    writer.writerows(rows)
 
 end_time = time.time()
-print(f"\nFinished. Total active markets saved: {total_rows}")
-print(f"Saved to: {output_path}")
-
+print(f"\n✅ Finished. Total open markets saved: {total_rows}")
+print(f"📁 Saved to: {output_path}")
+print(f"⏱️ Elapsed time: {round(end_time - start_time, 2)} seconds")
