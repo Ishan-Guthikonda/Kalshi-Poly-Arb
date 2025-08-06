@@ -9,7 +9,7 @@ url = f"{base_url}?limit={limit}"
 output_path = "kalshi_markets.csv"
 
 fieldnames = [
-    "ID", "Title",
+    "ID", "Title", "Yes Event Title",
     "Option 1", "Option 2",
     "Option 1 Ask (¢)", "Option 2 Ask (¢)",
     "Status", "Expires"
@@ -54,9 +54,23 @@ with open(output_path, mode="w", newline="", encoding="utf-8") as f:
         saved_this_page = 0
         for m in markets:
             if m.get("status") == "active":
+                title = m.get("title", "")
+                subtitle = m.get("subtitle", "")
+                yes_sub = m.get("yes_sub_title", "")
+
+                if subtitle and yes_sub:
+                    full_title = f"{title} ({subtitle}) [{yes_sub}]"
+                elif subtitle:
+                    full_title = f"{title} ({subtitle})"
+                elif yes_sub:
+                    full_title = f"{title} [{yes_sub}]"
+                else:
+                    full_title = title
+
                 writer.writerow({
                     "ID": m.get("ticker", ""),
-                    "Title": m.get("title", ""),
+                    "Title": full_title,
+                    "Yes Event Title": m.get("yes_label", ""),
                     "Option 1": "Yes",
                     "Option 2": "No",
                     "Option 1 Ask (¢)": round(m.get("yes_ask") or 0, 2),
@@ -82,6 +96,4 @@ with open(output_path, mode="w", newline="", encoding="utf-8") as f:
 end_time = time.time()
 print(f"\nFinished. Total active markets saved: {total_rows}")
 print(f"Saved to: {output_path}")
-
-
 
