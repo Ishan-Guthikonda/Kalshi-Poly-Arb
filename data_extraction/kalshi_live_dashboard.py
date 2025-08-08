@@ -2,7 +2,7 @@ import requests
 import csv
 import time
 
-# Config
+# === Config ===
 base_url = "https://api.elections.kalshi.com/trade-api/v2/markets"
 limit = 1000
 output_path = "kalshi_markets.csv"
@@ -86,6 +86,6 @@ with open(output_path, mode="w", newline="", encoding="utf-8") as f:
     writer.writerows(rows)
 
 end_time = time.time()
-print(f"\n✅ Finished. Total open markets saved: {total_rows}")
-print(f"📁 Saved to: {output_path}")
-print(f"⏱️ Elapsed time: {round(end_time - start_time, 2)} seconds")
+print(f"\nFinished. Total open markets saved: {total_rows}")
+print(f"Saved to: {output_path}")
+print(f"Elapsed time: {round(end_time - start_time, 2)} seconds")
