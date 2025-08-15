@@ -41,6 +41,56 @@ NEGATION_TOKENS = {"not","except","excluding","unless","under","over","atleast",
 REQUIRE_DATE_IF_PRESENT = True
 MIN_SHARED_TOKENS = 2
 
+
+# --- Sorting logic abstraction ---
+def _earliest_date(a, b):
+    if pd.isna(a) and pd.isna(b):
+        return pd.NaT
+    if pd.isna(a):
+        return b
+    if pd.isna(b):
+        return a
+    return a if a <= b else b
+
+def sort_matches_by_week_then_cosine(rows: list, k_df: pd.DataFrame, p_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Returns a DataFrame of matches sorted by earliest resolution *week* (Monday-based),
+    then by cosine (descending) within the same week.
+
+    - Adds columns: 'Kalshi Expiry', 'Polymarket Expiry', 'Earliest Expiry'
+    - 'Week' is computed as floor('W-MON') on 'Earliest Expiry'
+    """
+    if not rows:
+        return pd.DataFrame(columns=[
+            "Kalshi ID","Kalshi Title","Polymarket ID","Polymarket Title",
+            "Cosine","Kalshi Expiry","Polymarket Expiry","Earliest Expiry"
+        ])
+
+    df = pd.DataFrame(rows)
+
+    # Map ID -> expiry for quick lookup
+    k_exp_map = k_df.set_index(ID_COL)["expires_parsed"]
+    p_exp_map = p_df.set_index(ID_COL)["expires_parsed"]
+
+    df["Kalshi Expiry"] = df["Kalshi ID"].map(k_exp_map)
+    df["Polymarket Expiry"] = df["Polymarket ID"].map(p_exp_map)
+
+    df["Earliest Expiry"] = [
+        _earliest_date(k, p) for k, p in zip(df["Kalshi Expiry"], df["Polymarket Expiry"])
+    ]
+
+    # Week bucketing: same calendar week sorts together;
+    # pandas handles tz-aware timestamps for floor('W-MON')
+    df["Week"] = df["Earliest Expiry"].dt.floor("W-MON")
+
+    # Sort by week ascending, then cosine descending
+    df = df.sort_values(by=["Week", "Cosine"], ascending=[True, False])
+
+    # Drop helper column 'Week' before writing to CSV
+    df = df.drop(columns=["Week"])
+
+    return df
+# --- end sorting logic ---
 # Infra
 USE_FAISS = True
 USE_HUNGARIAN = True
@@ -373,15 +423,10 @@ def main():
             "Cosine": round(float(cos), 5)
         })
 
-    out_df = pd.DataFrame(rows).sort_values("Cosine", ascending=False)
+    out_df = sort_matches_by_week_then_cosine(rows, k_df, p_df)
+    #out_df = pd.DataFrame(rows).sort_values("Cosine", ascending=False)
     out_df.to_csv(OUTPUT_CSV, index=False)
     print(f"Saved {len(out_df)} matches -> {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
